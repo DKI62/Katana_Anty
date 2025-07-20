@@ -90,27 +90,44 @@ class ProfileManager(QWidget):
             QMessageBox.critical(self, "Ошибка", f"Ошибка чтения профиля: {str(e)}")
             return
 
-        # Проверка прокси через 9proxy
-        if profile.get('proxy'):
-            proxy = profile['proxy']
-            if not proxy.startswith(('http://', 'socks5://')):
-                profile['proxy'] = f'socks5://{proxy}'  # Форсируем SOCKS5 для 9proxy
-
         # Сохраняем обновленный профиль
         with open(profile_path, 'w') as f:
             json.dump(profile, f, indent=2)
 
-        # Запуск через Puppeteer
-        cmd = [
-            "node",
-            os.path.join(os.path.dirname(__file__), "katana_puppeteer.cjs"),
-            profile_name
-        ]
+        if getattr(sys, 'frozen', False):
+            base_dir = os.path.dirname(sys.executable)
+        else:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+
+        exe_path = os.path.join(base_dir, "node.exe")
+        script_path = os.path.join(base_dir, "katana_puppeteer.cjs")
+        debug_file = os.path.join(base_dir, "debug_paths.log")
+        proc_log_file = os.path.join(base_dir, "puppeteer_proc.log")
+
+        with open(debug_file, "a", encoding="utf-8") as dbg:
+            dbg.write(f"\n--- LAUNCH TRY ---\n")
+            dbg.write(f"exe_path = {exe_path} | exists = {os.path.exists(exe_path)}\n")
+            dbg.write(f"script_path = {script_path} | exists = {os.path.exists(script_path)}\n")
+            dbg.write(f"cwd = {os.getcwd()}\n")
+            dbg.write(f"profile_name = {profile_name}\n")
+            dbg.write(f"cmd = {[exe_path, script_path, profile_name]}\n")
+
+        cmd = [exe_path, script_path, profile_name]
 
         try:
-            subprocess.Popen(cmd, creationflags=subprocess.CREATE_NO_WINDOW)
+            with open(proc_log_file, "w", encoding="utf-8") as logfile:
+                # Теперь ошибки и stdout сохраняются!
+                subprocess.Popen(
+                    cmd,
+                    stdout=logfile,
+                    stderr=logfile,
+                    cwd=base_dir,
+                    creationflags=subprocess.CREATE_NO_WINDOW
+                )
             QMessageBox.information(self, "Успех", "Профиль запущен!")
         except Exception as e:
+            with open(debug_file, "a", encoding="utf-8") as dbg:
+                dbg.write(f"LAUNCH ERROR: {str(e)}\n")
             QMessageBox.critical(self, "Ошибка", f"Ошибка запуска: {str(e)}")
 
 
